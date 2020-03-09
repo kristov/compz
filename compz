@@ -1,0 +1,465 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+package ZComp::startrule;
+
+sub new {
+    my ($class, @d) = @_;
+    my $objects = $d[0];
+    my $self = bless({_objects => []}, $class);
+    for my $o (@{$objects}) {
+        push @{$self->{_objects}}, $o->[0];
+    }
+    return $self;
+}
+
+package ZComp::ARGS;
+
+sub new {
+    my ($class, @d) = @_;
+	shift @d;
+    pop @d;
+    return bless({_registers => $d[0]}, $class);
+}
+
+package ZComp::ASSIGNMENT;
+
+sub new {
+    my ($class, @d) = @_;
+    return bless({
+        _left => $d[0]->[0],
+        _right => $d[2]->[0],
+    }, $class);
+}
+
+package ZComp::BREAKCOND;
+
+sub new {
+    my ($class, @d) = @_;
+    return bless({_test => $d[1]->[0]}, $class);
+}
+
+package ZComp::CALL;
+
+sub new {
+    my ($class, @d) = @_;
+    return bless({
+        _name => $d[0]->[0],
+        _args => $d[1]->[0],
+    }, $class);
+}
+
+package ZComp::COMPARITOR;
+
+sub new {
+    my ($class, @d) = @_;
+    return $d[0]
+}
+
+package ZComp::CONSTANT;
+
+sub new {
+    my ($class, @d) = @_;
+    return bless({
+        _label => $d[0],
+        _value => $d[2],
+    }, $class);
+}
+
+package ZComp::DECIMAL;
+
+sub new {
+    my ($class, $decimal) = @_;
+    return bless({_value => $decimal}, $class);
+}
+
+package ZComp::EXPRESSION;
+
+sub new {
+    my ($class, @d) = @_;
+    return $d[0]->[0];
+}
+
+package ZComp::HEX16;
+
+sub new {
+    my ($class, $hex) = @_;
+    return bless({_value => hex($hex)}, $class);
+}
+
+package ZComp::HEX8;
+
+sub new {
+    my ($class, @d) = @_;
+    die "ZComp::HEX8: " . Data::Dumper::Dumper(\@d);
+}
+
+package ZComp::INDIRECT;
+
+sub new {
+    my ($class, @d) = @_;
+    return bless({_source => $d[1]->[0]}, $class);
+}
+
+package ZComp::LABEL;
+
+sub new {
+    my ($class, $label) = @_;
+    $label =~ s/^\.//;
+    return bless({_label => $label}, $class);
+}
+
+package ZComp::LOOP;
+
+sub new {
+    my ($class, $type) = @_;
+    return $type;
+}
+
+package ZComp::LOOPBLOCK;
+
+sub new {
+    my ($class, @d) = @_;
+    my $type = $d[0]->[0];
+	my $count = $d[2]->[0];
+    my $statements = $d[5];
+    my $self = bless({
+        _type => $type,
+        _count => $count,
+        _statements => []
+    }, $class);
+    for my $st (@{$statements}) {
+        push @{$self->{_statements}}, $st->[0];
+    }
+    return $self;
+}
+
+package ZComp::MUTATOR;
+
+sub new {
+    my ($class, @d) = @_;
+    return bless({
+        _operator => $d[0],
+        _value => $d[1]->[0],
+    }, $class);
+}
+
+package ZComp::NAMESPACE;
+
+sub new {
+    my ($class, @d) = @_;
+    return bless({_namespace => $d[1]->[0]}, $class);
+}
+
+package ZComp::NUMBER;
+
+sub new {
+    my ($class, @d) = @_;
+    return bless({_value => $d[0]->[0]}, $class);
+}
+
+package ZComp::OBJECT;
+
+sub new {
+    my ($class, @d) = @_;
+    return $d[0]->[0];
+}
+
+package ZComp::OP;
+
+sub new {
+    my ($class, $op) = @_;
+    return $op;
+}
+
+package ZComp::POST;
+
+sub new {
+    my ($class, @d) = @_;
+    return bless({}, $class);
+}
+
+package ZComp::PROCEDURE;
+
+sub new {
+    my ($class, @d) = @_;
+    my $nr_parts = scalar(@d);
+    if ($nr_parts == 7) {
+        my $ret = $d[0]->[0];
+        my $name = $d[2]->[0];
+        my $args = $d[3]->[0];
+        my $statements = $d[5];
+        my $self = bless({
+            _return => $ret,
+            _name => $name,
+            _args => $args,
+            _statements => []
+        }, $class);
+        for my $st (@{$statements}) {
+            push @{$self->{_statements}}, $st->[0];
+        }
+        return $self;
+    }
+    if ($nr_parts == 6) {
+        my $ret = $d[0]->[0];
+        my $name = $d[2]->[0];
+        my $args = undef;
+        my $statements = $d[4];
+        my $self = bless({
+            _return => $ret,
+            _name => $name,
+            _args => $args,
+            _statements => []
+        }, $class);
+        for my $st (@{$statements}) {
+            push @{$self->{_statements}}, $st->[0];
+        }
+        return $self;
+    }
+    if ($nr_parts == 5) {
+        my $ret = undef;
+        my $name = $d[0]->[0];
+        my $args = $d[1]->[0];
+        my $statements = $d[3];
+        my $self = bless({
+            _return => $ret,
+            _name => $name,
+            _args => $args,
+            _statements => []
+        }, $class);
+        for my $st (@{$statements}) {
+            push @{$self->{_statements}}, $st->[0];
+        }
+        return $self;
+    }
+    if ($nr_parts == 4) {
+        my $ret = undef;
+        my $name = $d[0]->[0];
+        my $args = undef;
+        my $statements = $d[2];
+        my $self = bless({
+            _return => $ret,
+            _name => $name,
+            _args => $args,
+            _statements => []
+        }, $class);
+        for my $st (@{$statements}) {
+            push @{$self->{_statements}}, $st->[0];
+        }
+        return $self;
+    }
+}
+
+sub return {
+    my ($self) = @_;
+    return $self->{_return};
+}
+
+sub name {
+    my ($self) = @_;
+    return $self->{_name};
+}
+
+sub args {
+    my ($self) = @_;
+    return $self->{_args};
+}
+
+sub statements {
+    my ($self) = @_;
+    return $self->{_statements};
+}
+
+package ZComp::REGISTER;
+
+sub new {
+    my ($class, $register) = @_;
+    return bless({_register => $register}, $class);
+}
+
+package ZComp::RETURN;
+
+sub new {
+    my ($class, @d) = @_;
+    return bless({_value => $d[1]->[0]}, $class);
+}
+
+package ZComp::STATEMENT;
+
+sub new {
+    my ($class, @d) = @_;
+    return $d[0]->[0];
+}
+
+package ZComp::TERNARY;
+
+sub new {
+    my ($class, @d) = @_;
+    die "ZComp::TERNARY " . Data::Dumper::Dumper(\@d);
+}
+
+package ZComp::TEST;
+
+sub new {
+    my ($class, @d) = @_;
+	shift @d;
+    pop @d;
+    return bless({
+        _left => $d[0]->[0],
+        _comparitor => $d[1]->[0],
+        _right => $d[2]->[0],
+    }, $class);
+}
+
+package ZComp::VALOPVAL;
+
+sub new {
+    my ($class, @d) = @_;
+    return bless({
+        _left => $d[0]->[0],
+        _op => $d[1]->[0],
+        _right => $d[2]->[0],
+    }, $class);
+}
+
+package ZComp::VALUE;
+
+sub new {
+    my ($class, @d) = @_;
+    return $d[0]->[0];
+}
+
+package ZComp::VARIABLE;
+
+sub new {
+    my ($class, @d) = @_;
+    return $d[0]->[0];
+}
+
+package ZComp::WORD;
+
+sub new {
+    my ($class, @d) = @_;
+    return $d[0];
+}
+
+package ZComp;
+
+use Data::Dumper;
+use Parse::RecDescent;
+
+sub new {
+    my ($class) = @_;
+    return bless({}, $class);
+}
+
+sub parser {
+    my ($self) = @_;
+    #$::RD_ERRORS = 1; # Make sure the parser dies when it encounters an error
+    #$::RD_WARN   = 1; # Enable warnings. This will warn on unused rules &c.
+    #$::RD_HINT   = 1; # Give out hints to help fix problems.
+    #$::RD_TRACE  = 1;
+    $::RD_AUTOACTION = q{[main::builder(@item)]};
+    $/ = undef;
+    my $grammar = <main::DATA>;
+    return Parse::RecDescent->new($grammar),
+}
+
+sub stdin {
+    my ($self) = @_;
+    my $code = "";
+    while (my $l = <STDIN>) {
+        $code .= $l;
+    }
+    my $startrule = $self->parser->startrule($code);
+    my $ast = $startrule->[0];
+    print "AST: " . Dumper($ast);
+}
+
+package main;
+
+sub builder {
+    my (@item) = @_;
+    my $type = shift @item;
+    my $class = sprintf('ZComp::%s', $type);
+    return $class->new(@item);
+}
+
+my $zcomp = ZComp->new;
+$zcomp->stdin;
+
+__DATA__
+REGISTER    : /[a-z]{1,2}/
+WORD        : /[a-z0-9_]{3,}/
+LABEL       : /.[a-z0-9_]+/
+COMPARITOR  : '==' | '!='
+OP          : '+' | '-' | '/' | '*'
+HEX16       : /0x[0-9a-f]{4}/
+HEX8        : /0x[0-9a-f]{2}/
+DECIMAL     : /[0-9]+/
+POST        : '|'
+LOOP        : 'luzd' | 'luz'
+
+NUMBER : HEX16
+       | HEX8
+       | DECIMAL
+
+INDIRECT : '*' REGISTER
+
+VARIABLE : INDIRECT
+         | REGISTER
+
+VALUE : VARIABLE
+      | LABEL
+      | NUMBER
+
+CONSTANT : LABEL '=' NUMBER
+
+ARGS : '[' REGISTER(s) ']'
+
+TEST : '(' VALUE COMPARITOR VALUE ')'
+
+TERNARY : TEST '?' EXPRESSION ':' EXPRESSION
+
+BREAKCOND : 'break' TEST
+
+CALL : WORD ARGS
+
+VALOPVAL: VALUE OP VALUE
+
+EXPRESSION : INDIRECT
+           | TERNARY
+           | CALL
+           | VALOPVAL
+           | VALUE
+
+MUTATOR : '++' VARIABLE
+        | '--' VARIABLE
+
+RETURN : '<=' VALUE
+
+LOOPBLOCK : LOOP '[' REGISTER ']' '{' STATEMENT(s) '}'
+
+ASSIGNMENT : VARIABLE '=' EXPRESSION
+
+STATEMENT : RETURN
+          | MUTATOR
+          | POST
+          | BREAKCOND
+          | LOOPBLOCK
+          | ASSIGNMENT
+
+PROCEDURE : REGISTER '<=' WORD ARGS '{' STATEMENT(s) '}'
+          | REGISTER '<=' WORD '{' STATEMENT(s) '}'
+          | WORD ARGS '{' STATEMENT(s) '}'
+          | WORD '{' STATEMENT(s) '}'
+
+NAMESPACE : 'namespace' WORD
+
+OBJECT : NAMESPACE
+       | CONSTANT
+       | PROCEDURE
+
+startrule : OBJECT(s)

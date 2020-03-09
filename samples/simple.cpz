@@ -1,0 +1,8 @@
+.base = 0x0400
+
+l <= func1[a] {
+    aa = a * 2
+    ab = .base + aa
+    ac = ab + 1
+    <= *ac
+}

@@ -1,0 +1,15 @@
+l <= func1[a] {
+    <= *ac
+}
+
+func1[a] {
+    aa = a * 2
+}
+
+l <= func1 {
+    <= *ac
+}
+
+func1 {
+    <= *ac
+}

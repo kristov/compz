@@ -1,0 +1,29 @@
+namespace m8fs
+
+.base = 0x0400
+.files_per_block = 8
+.file_entry_len = 8
+
+hl <= blkc_find[i nn l] {
+    luz[i] {
+        aa = blk_addr[i]
+        a = .files_per_block
+        luzd[a] {
+            bb = aa
+            cc = nn
+            b = l
+            luzd[b] {
+                break (*cc != *bb)
+                ++cc
+                ++bb
+                |
+                <= aa
+            }
+            aa = aa + .file_entry_len
+        }
+        ab = i * 2
+        ac = ab + .base
+        ++ac
+        i = *ac
+    }
+}
