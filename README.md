@@ -182,3 +182,45 @@ Or a value, like:
     a = c
     a = .constant
 
+## Basic Blocks
+
+I suppose most compilers try to break the code into basic blocks. In this compiler basic blocks are split on the following:
+
+1. A procedure start of a basic block
+1. Loop beginnings
+1. Post statements inside loops
+1. Loop ends
+
+For the example procedure above the blocks would look like this:
+
+    hl <= blkc_find[i nn l] {
+    0------------------------------------------
+        luz[i] {
+            aa = blk_addr[i]
+            a = .files_per_block
+    1------------------------------------------
+            luzd[a] {
+                bb = aa
+                cc = nn
+                b = l
+    2------------------------------------------
+                luzd[b] {
+                    break (*cc != *bb)
+                    ++cc
+                    ++bb
+    3------------------------------------------
+                    |
+                    <= aa
+                }
+    4------------------------------------------
+                aa = aa + .file_entry_len
+            }
+    5------------------------------------------
+            ab = i * 2
+            ac = ab + .base
+            ++ac
+            i = *ac
+        }
+    }
+
+Each block boundry would generate a label. For example the `break (*cc != *bb)` would generate a jump to label `4` if the test is true. The `luzd[b] {` label `2` would be the destination for a `djnz`.
