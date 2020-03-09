@@ -89,11 +89,11 @@ There are only two loop types:
 1. `luzd` (loop-until-zero-decrement)
 
     luz[b] {
-        <statements>
+        statements...
     }
 
     luzd[b] {
-        <statements>
+        statements...
     }
 
 They take a single variable as an argument. In both cases the loop will end when the variable has a zero value. In the case of `luzd` this variable is automatically decremented on each pass of the loop. There are only two ways to exit a loop:
