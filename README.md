@@ -1,5 +1,7 @@
 # Experimental Z80 compiler
 
+*STATUS WIP: PARSES BASIC FILES AND DUMPS AST*
+
 Inspired by a few things:
 
 * Reading about how C translates poorly to Z80 assembler
