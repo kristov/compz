@@ -350,6 +350,11 @@ package ZComp;
 use Data::Dumper;
 use Parse::RecDescent;
 
+$Data::Dumper::Indent = 1;
+$Data::Dumper::Trailingcomma = 1;
+$Data::Dumper::Quotekeys = 0;
+$Data::Dumper::Sortkeys = 1;
+
 sub new {
     my ($class) = @_;
     return bless({}, $class);
@@ -438,7 +443,7 @@ EXPRESSION : INDIRECT
 MUTATOR : '++' VARIABLE
         | '--' VARIABLE
 
-RETURN : '<=' VALUE
+RETURN : '<=' EXPRESSION
 
 LOOPBLOCK : LOOP '[' REGISTER ']' '{' STATEMENT(s) '}'
 
