@@ -15,13 +15,27 @@ sub new {
     return $self;
 }
 
+sub objects {
+    my ($self) = @_;
+    return @{$self->{_objects}};
+}
+
 package ZComp::ARGS;
 
 sub new {
     my ($class, @d) = @_;
 	shift @d;
     pop @d;
-    return bless({_registers => $d[0]}, $class);
+    my $self = bless({_registers => []}, $class);
+    for my $reg (@{$d[0]}) {
+        push @{$self->{_registers}}, $reg->[0];
+    }
+    return $self;
+}
+
+sub registers {
+    my ($self) = @_;
+    return (map {$_->registers} @{$self->{_registers}});
 }
 
 package ZComp::ASSIGNMENT;
@@ -34,11 +48,32 @@ sub new {
     }, $class);
 }
 
+sub registers {
+    my ($self) = @_;
+    return ($self->{_left}->registers, $self->{_right}->registers);
+}
+
+package ZComp::BLOCKTERMINATOR;
+
+sub new {
+    my ($class, @d) = @_;
+    return bless({}, $class);
+}
+
+sub registers {
+    return ();
+}
+
 package ZComp::BREAKCOND;
 
 sub new {
     my ($class, @d) = @_;
     return bless({_test => $d[1]->[0]}, $class);
+}
+
+sub registers {
+    my ($self) = @_;
+    return ($self->{_test}->registers);
 }
 
 package ZComp::CALL;
@@ -49,6 +84,11 @@ sub new {
         _name => $d[0]->[0],
         _args => $d[1]->[0],
     }, $class);
+}
+
+sub registers {
+    my ($self) = @_;
+    return ($self->{_args}->registers);
 }
 
 package ZComp::COMPARITOR;
@@ -63,9 +103,19 @@ package ZComp::CONSTANT;
 sub new {
     my ($class, @d) = @_;
     return bless({
-        _label => $d[0],
-        _value => $d[2],
+        _label => $d[0]->[0],
+        _value => $d[2]->[0],
     }, $class);
+}
+
+sub label {
+    my ($self) = @_;
+    return $self->{_label}->label;
+}
+
+sub value {
+    my ($self) = @_;
+    return $self->{_value}->value;
 }
 
 package ZComp::DECIMAL;
@@ -73,6 +123,11 @@ package ZComp::DECIMAL;
 sub new {
     my ($class, $decimal) = @_;
     return bless({_value => $decimal}, $class);
+}
+
+sub value {
+    my ($self) = @_;
+    return $self->{_value};
 }
 
 package ZComp::EXPRESSION;
@@ -89,6 +144,11 @@ sub new {
     return bless({_value => hex($hex)}, $class);
 }
 
+sub value {
+    my ($self) = @_;
+    return $self->{_value};
+}
+
 package ZComp::HEX8;
 
 sub new {
@@ -103,12 +163,26 @@ sub new {
     return bless({_source => $d[1]->[0]}, $class);
 }
 
+sub registers {
+    my ($self) = @_;
+    return ($self->{_source}->registers);
+}
+
 package ZComp::LABEL;
 
 sub new {
     my ($class, $label) = @_;
     $label =~ s/^\.//;
     return bless({_label => $label}, $class);
+}
+
+sub registers {
+    return ();
+}
+
+sub label {
+    my ($self) = @_;
+    return $self->{_label};
 }
 
 package ZComp::LOOP;
@@ -136,6 +210,32 @@ sub new {
     return $self;
 }
 
+sub statements {
+    my ($self) = @_;
+    return @{$self->{_statements}};
+}
+
+sub statements_flat {
+    my ($self) = @_;
+    my @statements = $self->statements;
+    my @flat;
+    push @flat, $self;
+    for my $statement (@statements) {
+        if ($statement->can('statements_flat')) {
+            push @flat, $statement->statements_flat;
+            next;
+        }
+        push @flat, $statement;
+    }
+    push @flat, ZComp::BLOCKTERMINATOR->new;
+    return @flat;
+}
+
+sub registers {
+    my ($self) = @_;
+    return ($self->{_count}->registers);
+}
+
 package ZComp::MUTATOR;
 
 sub new {
@@ -146,6 +246,11 @@ sub new {
     }, $class);
 }
 
+sub registers {
+    my ($self) = @_;
+    return ($self->{_value}->registers);
+}
+
 package ZComp::NAMESPACE;
 
 sub new {
@@ -153,11 +258,25 @@ sub new {
     return bless({_namespace => $d[1]->[0]}, $class);
 }
 
+sub namespace {
+    my ($self) = @_;
+    return $self->{_namespace};
+}
+
 package ZComp::NUMBER;
 
 sub new {
     my ($class, @d) = @_;
     return bless({_value => $d[0]->[0]}, $class);
+}
+
+sub registers {
+    return ();
+}
+
+sub value {
+    my ($self) = @_;
+    return $self->{_value}->value;
 }
 
 package ZComp::OBJECT;
@@ -179,6 +298,10 @@ package ZComp::POST;
 sub new {
     my ($class, @d) = @_;
     return bless({}, $class);
+}
+
+sub registers {
+    return ();
 }
 
 package ZComp::PROCEDURE;
@@ -269,14 +392,45 @@ sub args {
 
 sub statements {
     my ($self) = @_;
-    return $self->{_statements};
+    return @{$self->{_statements}};
+}
+
+sub statements_flat {
+    my ($self) = @_;
+    my @statements = $self->statements;
+    my @flat;
+    push @flat, $self;
+    for my $statement (@statements) {
+        if ($statement->can('statements_flat')) {
+            push @flat, $statement->statements_flat;
+            next;
+        }
+        push @flat, $statement;
+    }
+    push @flat, ZComp::BLOCKTERMINATOR->new;
+    return @flat;
+}
+
+sub registers {
+    my ($self) = @_;
+    return (($self->{_args}) ? $self->{_args}->registers : ());
 }
 
 package ZComp::REGISTER;
 
 sub new {
     my ($class, $register) = @_;
-    return bless({_register => $register}, $class);
+    return bless({_name => $register}, $class);
+}
+
+sub name {
+    my ($self) = @_;
+    return $self->{_name};
+}
+
+sub registers {
+    my ($self) = @_;
+    return ($self);
 }
 
 package ZComp::RETURN;
@@ -284,6 +438,11 @@ package ZComp::RETURN;
 sub new {
     my ($class, @d) = @_;
     return bless({_value => $d[1]->[0]}, $class);
+}
+
+sub registers {
+    my ($self) = @_;
+    return ($self->{_value}->registers);
 }
 
 package ZComp::STATEMENT;
@@ -313,6 +472,11 @@ sub new {
     }, $class);
 }
 
+sub registers {
+    my ($self) = @_;
+    return ($self->{_left}->registers, $self->{_right}->registers);
+}
+
 package ZComp::VALOPVAL;
 
 sub new {
@@ -322,6 +486,11 @@ sub new {
         _op => $d[1]->[0],
         _right => $d[2]->[0],
     }, $class);
+}
+
+sub registers {
+    my ($self) = @_;
+    return ($self->{_left}->registers, $self->{_right}->registers);
 }
 
 package ZComp::VALUE;
@@ -380,7 +549,65 @@ sub stdin {
     }
     my $startrule = $self->parser->startrule($code);
     my $ast = $startrule->[0];
-    print "AST: " . Dumper($ast);
+    return $self->process($ast);
+}
+
+sub ident {
+    my ($self, $ident) = @_;
+    return ($self->{_namespace})
+        ? sprintf('%s_%s', $self->{_namespace}, $ident)
+        : $ident;
+}
+
+sub process {
+    my ($self, $ast) = @_;
+    if (!$ast->isa('ZComp::startrule')) {
+        die "no startrule found";
+    }
+    for my $object ($ast->objects) {
+        if ($object->isa('ZComp::NAMESPACE')) {
+            $self->{_namespace} = $object->namespace;
+            next;
+        }
+        if ($object->isa('ZComp::CONSTANT')) {
+            $self->process_constant($object);
+            next;
+        }
+        if ($object->isa('ZComp::PROCEDURE')) {
+            $self->process_procedure($object);
+            next;
+        }
+    }
+}
+
+sub process_constant {
+    my ($self, $object) = @_;
+    printf("%s: equ %s\n", $self->ident($object->label), $object->value);
+}
+
+sub process_procedure {
+    my ($self, $object) = @_;
+    my @statements_flat = $object->statements_flat;
+    my %register_span;
+    my $idx = 0;
+    for my $statement (@statements_flat) {
+        my @registers = $statement->registers;
+        for my $register (@registers) {
+            if (!$register->isa('ZComp::REGISTER')) {
+                die Data::Dumper::Dumper($register);
+            }
+            my $name = $register->name;
+            $register_span{$name} //= {
+                first => $idx,
+                last => $idx,
+            };
+            if ($register_span{$name}->{last} < $idx) {
+                $register_span{$name}->{last} = $idx;
+            }
+        }
+        $idx++;
+    }
+    die Data::Dumper::Dumper(\%register_span);
 }
 
 package main;
