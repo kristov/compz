@@ -28,6 +28,7 @@ sub new {
     pop @d;
     my $self = bless({_registers => []}, $class);
     for my $reg (@{$d[0]}) {
+        $reg->[0]->from_arg(1);
         push @{$self->{_registers}}, $reg->[0];
     }
     return $self;
@@ -416,11 +417,14 @@ sub registers {
     return (($self->{_args}) ? $self->{_args}->registers : ());
 }
 
-package ZComp::REGISTER;
+package ZComp::REG16;
 
 sub new {
     my ($class, $register) = @_;
-    return bless({_name => $register}, $class);
+    return bless({
+        _name => $register,
+        _from_arg => 0,
+    }, $class);
 }
 
 sub name {
@@ -431,6 +435,45 @@ sub name {
 sub registers {
     my ($self) = @_;
     return ($self);
+}
+
+sub from_arg {
+    my ($self, $from_arg) = @_;
+    $self->{_from_arg} = $from_arg if defined $from_arg;
+    return $self->{_from_arg};
+}
+
+package ZComp::REG8;
+
+sub new {
+    my ($class, $register) = @_;
+    return bless({
+        _name => $register,
+        _from_arg => 0,
+    }, $class);
+}
+
+sub name {
+    my ($self) = @_;
+    return $self->{_name};
+}
+
+sub registers {
+    my ($self) = @_;
+    return ($self);
+}
+
+sub from_arg {
+    my ($self, $from_arg) = @_;
+    $self->{_from_arg} = $from_arg if defined $from_arg;
+    return $self->{_from_arg};
+}
+
+package ZComp::REGISTER;
+
+sub new {
+    my ($class, @d) = @_;
+    return $d[0]->[0];
 }
 
 package ZComp::RETURN;
@@ -588,26 +631,17 @@ sub process_constant {
 sub process_procedure {
     my ($self, $object) = @_;
     my @statements_flat = $object->statements_flat;
-    my %register_span;
+    my @register_map;
     my $idx = 0;
     for my $statement (@statements_flat) {
         my @registers = $statement->registers;
         for my $register (@registers) {
-            if (!$register->isa('ZComp::REGISTER')) {
-                die Data::Dumper::Dumper($register);
-            }
             my $name = $register->name;
-            $register_span{$name} //= {
-                first => $idx,
-                last => $idx,
-            };
-            if ($register_span{$name}->{last} < $idx) {
-                $register_span{$name}->{last} = $idx;
-            }
+            push @{$register_map[$idx]}, $name;
         }
         $idx++;
     }
-    die Data::Dumper::Dumper(\%register_span);
+    die Data::Dumper::Dumper(\@register_map);
 }
 
 package main;
@@ -623,7 +657,8 @@ my $zcomp = ZComp->new;
 $zcomp->stdin;
 
 __DATA__
-REGISTER    : /[a-z]{1,2}/
+REG16       : /[a-z]{2}/
+REG8        : /[a-z]/
 WORD        : /[a-z0-9_]{3,}/
 LABEL       : /.[a-z0-9_]+/
 COMPARITOR  : '==' | '!='
@@ -634,11 +669,13 @@ DECIMAL     : /[0-9]+/
 POST        : '|'
 LOOP        : 'luzd' | 'luz'
 
+REGISTER : REG16 | REG8
+
 NUMBER : HEX16
        | HEX8
        | DECIMAL
 
-INDIRECT : '*' REGISTER
+INDIRECT : '*' REG16
 
 VARIABLE : INDIRECT
          | REGISTER
