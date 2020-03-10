@@ -77,6 +77,15 @@ sub registers {
     return ($self->{_test}->registers);
 }
 
+# break (*16 != *16) -> ld a,(xx) : cp (hl) : jp nz,label
+# break (*16 = *16)  -> ld a,(xx) : cp (hl) : jp z,label
+# break (*16 != 8)   -> ld a,x : cp (hl) : jp nz,label
+# break (*16 = 8)    -> ld a,x : cp (hl) : jp z,label
+# break (8 != 8)     -> ld a,x : cp y : jp nz,label
+# break (8 == 8)     -> ld a,x : cp y : jp z,label
+# break (16 != 16)   -> and a : sbc hl,xx : add hl,xx : jp nz,label
+# break (16 = 16)    -> and a : sbc hl,xx : add hl,xx : jp z,label
+
 package ZComp::CALL;
 
 sub new {
