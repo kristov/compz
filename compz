@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-package ZComp::startrule;
+package CZ::startrule;
 
 sub new {
     my ($class, @d) = @_;
@@ -20,7 +20,7 @@ sub objects {
     return @{$self->{_objects}};
 }
 
-package ZComp::ARGS;
+package CZ::ARGS;
 
 sub new {
     my ($class, @d) = @_;
@@ -39,7 +39,7 @@ sub registers {
     return (map {$_->registers} @{$self->{_registers}});
 }
 
-package ZComp::ASSIGNMENT;
+package CZ::ASSIGNMENT;
 
 sub new {
     my ($class, @d) = @_;
@@ -54,27 +54,75 @@ sub registers {
     return ($self->{_left}->registers, $self->{_right}->registers);
 }
 
-package ZComp::BLOCKTERMINATOR;
+sub code_chunk {
+    my ($self) = @_;
+    # if left is indirect load address into hl and value into somewhere else etc
+    return CZA::CodeChunk->new();
+}
+
+package CZ::BLOCKTERMINATOR;
 
 sub new {
-    my ($class, @d) = @_;
-    return bless({}, $class);
+    my ($class, $start) = @_;
+    return bless({_start => $start}, $class);
 }
 
 sub registers {
     return ();
 }
 
-package ZComp::BREAKCOND;
+sub start {
+    my ($self) = @_;
+    return $self->{_start};
+}
+
+sub code_chunk {
+    my ($self) = @_;
+    if ($self->start->isa('CZ::LOOPBLOCK')) {
+        my $type = $self->start->type;
+        if ($type eq 'luz') {
+            return CZA::CodeChunk->new(
+                ['xor', 'a'],
+                ['cp x'],
+                ['jp nz', $self->start->label],
+            );
+        }
+        if ($type eq 'luzd') {
+            return CZA::CodeChunk->new(
+                ['djnz', $self->start->label],
+            );
+        }
+    }
+    return ();
+}
+
+package CZ::BREAKCOND;
 
 sub new {
     my ($class, @d) = @_;
-    return bless({_test => $d[1]->[0]}, $class);
+    return bless({
+        _test => $d[1]->[0],
+        _breaks_to => undef,
+    }, $class);
 }
 
 sub registers {
     my ($self) = @_;
     return ($self->{_test}->registers);
+}
+
+sub breaks_to {
+    my ($self, $breaks_to) = @_;
+    $self->{_breaks_to} = $breaks_to;
+}
+
+sub code_chunk {
+    my ($self) = @_;
+    return CZA::CodeChunk->new(
+        ['ld a', '(xx)'],
+        ['cp (hl)'],
+        ['jp nz', $self->{_breaks_to}->label],
+    );
 }
 
 # break (*16 != *16) -> ld a,(xx) : cp (hl) : jp nz,label
@@ -86,7 +134,7 @@ sub registers {
 # break (16 != 16)   -> and a : sbc hl,xx : add hl,xx : jp nz,label
 # break (16 = 16)    -> and a : sbc hl,xx : add hl,xx : jp z,label
 
-package ZComp::CALL;
+package CZ::CALL;
 
 sub new {
     my ($class, @d) = @_;
@@ -108,14 +156,14 @@ sub registers {
 # argument to a procedure is 8 bit, the high byte of the 16 bit pair can be
 # used to carry an 8 bit value across the call.
 
-package ZComp::COMPARITOR;
+package CZ::COMPARITOR;
 
 sub new {
     my ($class, @d) = @_;
     return $d[0]
 }
 
-package ZComp::CONSTANT;
+package CZ::CONSTANT;
 
 sub new {
     my ($class, @d) = @_;
@@ -135,7 +183,7 @@ sub value {
     return $self->{_value}->value;
 }
 
-package ZComp::DECIMAL;
+package CZ::DECIMAL;
 
 sub new {
     my ($class, $decimal) = @_;
@@ -147,14 +195,14 @@ sub value {
     return $self->{_value};
 }
 
-package ZComp::EXPRESSION;
+package CZ::EXPRESSION;
 
 sub new {
     my ($class, @d) = @_;
     return $d[0]->[0];
 }
 
-package ZComp::HEX16;
+package CZ::HEX16;
 
 sub new {
     my ($class, $hex) = @_;
@@ -166,18 +214,23 @@ sub value {
     return $self->{_value};
 }
 
-package ZComp::HEX8;
+package CZ::HEX8;
 
 sub new {
     my ($class, @d) = @_;
-    die "ZComp::HEX8: " . Data::Dumper::Dumper(\@d);
+    die "CZ::HEX8: " . Data::Dumper::Dumper(\@d);
 }
 
-package ZComp::INDIRECT;
+package CZ::INDIRECT;
 
 sub new {
     my ($class, @d) = @_;
     return bless({_source => $d[1]->[0]}, $class);
+}
+
+sub source {
+    my ($self) = @_;
+    return $self->{_source};
 }
 
 sub registers {
@@ -185,7 +238,7 @@ sub registers {
     return ($self->{_source}->registers);
 }
 
-package ZComp::LABEL;
+package CZ::LABEL;
 
 sub new {
     my ($class, $label) = @_;
@@ -202,14 +255,14 @@ sub label {
     return $self->{_label};
 }
 
-package ZComp::LOOP;
+package CZ::LOOP;
 
 sub new {
     my ($class, $type) = @_;
     return $type;
 }
 
-package ZComp::LOOPBLOCK;
+package CZ::LOOPBLOCK;
 
 sub new {
     my ($class, @d) = @_;
@@ -219,7 +272,8 @@ sub new {
     my $self = bless({
         _type => $type,
         _count => $count,
-        _statements => []
+        _statements => [],
+        _label => undef,
     }, $class);
     for my $st (@{$statements}) {
         push @{$self->{_statements}}, $st->[0];
@@ -227,9 +281,24 @@ sub new {
     return $self;
 }
 
+sub type {
+    my ($self) = @_;
+    return $self->{_type};
+}
+
 sub statements {
     my ($self) = @_;
     return @{$self->{_statements}};
+}
+
+sub label {
+    my ($self) = @_;
+    return $self->{_label};
+}
+
+sub generate_label {
+    my ($self, $idx) = @_;
+    $self->{_label} = sprintf('l_%d', $idx);
 }
 
 sub statements_flat {
@@ -244,7 +313,7 @@ sub statements_flat {
         }
         push @flat, $statement;
     }
-    push @flat, ZComp::BLOCKTERMINATOR->new;
+    push @flat, CZ::BLOCKTERMINATOR->new($self);
     return @flat;
 }
 
@@ -253,7 +322,12 @@ sub registers {
     return ($self->{_count}->registers);
 }
 
-package ZComp::MUTATOR;
+sub code_chunk {
+    my ($self) = @_;
+    return CZA::Label->new($self->label);
+}
+
+package CZ::MUTATOR;
 
 sub new {
     my ($class, @d) = @_;
@@ -268,7 +342,30 @@ sub registers {
     return ($self->{_value}->registers);
 }
 
-package ZComp::NAMESPACE;
+sub code_chunk {
+    my ($self) = @_;
+    my $value;
+    if ($self->{_value}->isa('CZ::REG8')) {
+        $value = $self->{_value}->name;
+    }
+    elsif ($self->{_value}->isa('CZ::REG16')) {
+        $value = $self->{_value}->name;
+    }
+    elsif ($self->{_value}->isa('CZ::INDIRECT')) {
+        $value = $self->{_value}->source->name;
+    }
+    else {
+        die "invalid mutator";
+    }
+    if ($self->{_operator} eq '++') {
+        return CZA::CodeChunk->new(['inc ' . $value]);
+    }
+    if ($self->{_operator} eq '--') {
+        return CZA::CodeChunk->new(['dec ' . $value]);
+    }
+}
+
+package CZ::NAMESPACE;
 
 sub new {
     my ($class, @d) = @_;
@@ -280,7 +377,7 @@ sub namespace {
     return $self->{_namespace};
 }
 
-package ZComp::NUMBER;
+package CZ::NUMBER;
 
 sub new {
     my ($class, @d) = @_;
@@ -296,21 +393,21 @@ sub value {
     return $self->{_value}->value;
 }
 
-package ZComp::OBJECT;
+package CZ::OBJECT;
 
 sub new {
     my ($class, @d) = @_;
     return $d[0]->[0];
 }
 
-package ZComp::OP;
+package CZ::OP;
 
 sub new {
     my ($class, $op) = @_;
     return $op;
 }
 
-package ZComp::POST;
+package CZ::POST;
 
 sub new {
     my ($class, @d) = @_;
@@ -321,7 +418,38 @@ sub registers {
     return ();
 }
 
-package ZComp::PROCEDURE;
+sub code_chunk {
+    my ($self) = @_;
+    return CZA::CodeChunk->new();
+}
+
+package CZ::POSTTERMINATOR;
+
+sub new {
+    my ($class, @d) = @_;
+    return bless({_label => undef}, $class);
+}
+
+sub registers {
+    return ();
+}
+
+sub label {
+    my ($self) = @_;
+    return $self->{_label};
+}
+
+sub code_chunk {
+    my ($self) = @_;
+    return CZA::Label->new($self->label);
+}
+
+sub generate_label {
+    my ($self, $idx) = @_;
+    $self->{_label} = sprintf('pt_%d', $idx);
+}
+
+package CZ::PROCEDURE;
 
 sub new {
     my ($class, @d) = @_;
@@ -424,7 +552,6 @@ sub statements_flat {
         }
         push @flat, $statement;
     }
-    push @flat, ZComp::BLOCKTERMINATOR->new;
     return @flat;
 }
 
@@ -433,7 +560,12 @@ sub registers {
     return (($self->{_args}) ? $self->{_args}->registers : ());
 }
 
-package ZComp::REG16;
+sub code_chunk {
+    my ($self) = @_;
+    return CZA::Label->new($self->name);
+};
+
+package CZ::REG16;
 
 sub new {
     my ($class, $register) = @_;
@@ -459,7 +591,7 @@ sub from_arg {
     return $self->{_from_arg};
 }
 
-package ZComp::REG8;
+package CZ::REG8;
 
 sub new {
     my ($class, $register) = @_;
@@ -485,18 +617,23 @@ sub from_arg {
     return $self->{_from_arg};
 }
 
-package ZComp::REGISTER;
+package CZ::REGISTER;
 
 sub new {
     my ($class, @d) = @_;
     return $d[0]->[0];
 }
 
-package ZComp::RETURN;
+package CZ::RETURN;
 
 sub new {
     my ($class, @d) = @_;
     return bless({_value => $d[1]->[0]}, $class);
+}
+
+sub value {
+    my ($self) = @_;
+    return $self->{_value};
 }
 
 sub registers {
@@ -504,21 +641,39 @@ sub registers {
     return ($self->{_value}->registers);
 }
 
-package ZComp::STATEMENT;
+sub code_chunk {
+    my ($self) = @_;
+    if ($self->value->isa('CZ::REG8')) {
+        return CZA::CodeChunk->new(
+            ['ld h', '0x00'],
+            ['ld l', $self->value->name],
+            ['ret'],
+        );
+    }
+    if ($self->value->isa('CZ::REG16')) {
+        return CZA::CodeChunk->new(
+            ['ld hl', $self->value->name],
+            ['ret'],
+        );
+    }
+    die "invalid return";
+}
+
+package CZ::STATEMENT;
 
 sub new {
     my ($class, @d) = @_;
     return $d[0]->[0];
 }
 
-package ZComp::TERNARY;
+package CZ::TERNARY;
 
 sub new {
     my ($class, @d) = @_;
-    die "ZComp::TERNARY " . Data::Dumper::Dumper(\@d);
+    die "CZ::TERNARY " . Data::Dumper::Dumper(\@d);
 }
 
-package ZComp::TEST;
+package CZ::TEST;
 
 sub new {
     my ($class, @d) = @_;
@@ -536,7 +691,7 @@ sub registers {
     return ($self->{_left}->registers, $self->{_right}->registers);
 }
 
-package ZComp::VALOPVAL;
+package CZ::VALOPVAL;
 
 sub new {
     my ($class, @d) = @_;
@@ -552,28 +707,114 @@ sub registers {
     return ($self->{_left}->registers, $self->{_right}->registers);
 }
 
-package ZComp::VALUE;
+package CZ::VALUE;
 
 sub new {
     my ($class, @d) = @_;
     return $d[0]->[0];
 }
 
-package ZComp::VARIABLE;
+package CZ::VARIABLE;
 
 sub new {
     my ($class, @d) = @_;
     return $d[0]->[0];
 }
 
-package ZComp::WORD;
+package CZ::WORD;
 
 sub new {
     my ($class, @d) = @_;
     return $d[0];
 }
 
-package ZComp;
+package CZA::Block;
+
+sub new {
+    my ($class, @statements) = @_;
+    my $self = bless({
+        _statements => [],
+        _code_chunks => [],
+    }, $class);
+    for my $statement (@statements) {
+        push @{$self->{_statements}}, $statement;
+    }
+    return $self;
+}
+
+sub statements {
+    my ($self) = @_;
+    return @{$self->{_statements}};
+}
+
+sub entry {
+    my ($self) = @_;
+    return $self->{_statements}->[0];
+}
+
+sub code_chunks {
+    my ($self) = @_;
+    return @{$self->{_code_chunks}};
+}
+
+sub generate_labels {
+    my ($self, $label_idx) = @_;
+    for my $statement ($self->statements) {
+        if ($statement->can('generate_label')) {
+            $statement->generate_label($label_idx);
+            $label_idx++;
+        }
+    }
+    return $label_idx;
+}
+
+sub generate_codes {
+    my ($self) = @_;
+    for my $statement ($self->statements) {
+        push @{$self->{_code_chunks}}, $statement->code_chunk;
+    }
+}
+
+sub add_posterminator {
+    my ($self) = @_;
+    my $posterminator = CZ::POSTTERMINATOR->new;
+    push @{$self->{_statements}}, $posterminator;
+    return $posterminator;
+}
+
+package CZA::Label;
+
+sub new {
+    my ($class, $label) = @_;
+    return bless({_label => $label}, $class);
+}
+
+sub stringify {
+    my ($self) = @_;
+    return $self->{_label} . ":";
+}
+
+package CZA::CodeChunk;
+
+sub new {
+    my ($class, @codes) = @_;
+    my $self = bless({_codes => []}, $class);
+    for my $code (@codes) {
+        push @{$self->{_codes}}, $code;
+    }
+    return $self;
+}
+
+sub stringify {
+    my ($self) = @_;
+    my @lines;
+    for my $code (@{$self->{_codes}}) {
+        push @lines, join(',', @{$code});
+    }
+    return @lines;
+}
+
+package CZ;
 
 use Data::Dumper;
 use Parse::RecDescent;
@@ -620,19 +861,19 @@ sub ident {
 
 sub process {
     my ($self, $ast) = @_;
-    if (!$ast->isa('ZComp::startrule')) {
+    if (!$ast->isa('CZ::startrule')) {
         die "no startrule found";
     }
     for my $object ($ast->objects) {
-        if ($object->isa('ZComp::NAMESPACE')) {
+        if ($object->isa('CZ::NAMESPACE')) {
             $self->{_namespace} = $object->namespace;
             next;
         }
-        if ($object->isa('ZComp::CONSTANT')) {
+        if ($object->isa('CZ::CONSTANT')) {
             $self->process_constant($object);
             next;
         }
-        if ($object->isa('ZComp::PROCEDURE')) {
+        if ($object->isa('CZ::PROCEDURE')) {
             $self->process_procedure($object);
             next;
         }
@@ -644,6 +885,72 @@ sub process_constant {
     printf("%s: equ %s\n", $self->ident($object->label), $object->value);
 }
 
+# Move POST blocks after the BLOCKTERMINATOR of the end of a loop. The
+# BLOCKTERMINATOR of a LOOPBLOCK will be the test and jump. The POST should be
+# the fall-through of that test. A BREAKCOND inside the loop will jump over the
+# post to the BLOCKTERMINATOR.
+#
+sub swap_posts {
+    my ($self, @blocks) = @_;
+    my @new_blocks;
+    my $post_block;
+    for my $block (@blocks) {
+        if ($block->entry->isa('CZ::POST')) {
+            $post_block = $block;
+            next;
+        }
+        push @new_blocks, $block;
+        if ($post_block) {
+            push @new_blocks, $post_block;
+            $post_block = undef;
+        }
+    }
+    return @new_blocks;
+}
+
+# Search inside LOOPBLOCKs for all BREAKCONDs. If found remember them and
+# continue to the next BLOCKTERMINATOR. When found mark that as the destination
+# for the break jump, and also inform the BLOCKTERMINATOR that it needs to
+# become a destination label (otherwise BLOCKTERMINATORs don't need labels).
+#
+sub link_breaks {
+    my ($self, @blocks) = @_;
+    my @prev_breakconds;
+    for my $block (@blocks) {
+        my $entry = $block->entry;
+        if ($entry->isa('CZ::POST') && @prev_breakconds) {
+            my $posterminator = $block->add_posterminator;
+            for my $breakcond (@prev_breakconds) {
+                $breakcond->breaks_to($posterminator);
+            }
+            @prev_breakconds = ();
+            next;
+        }
+        if (!$entry->isa('CZ::LOOPBLOCK')) {
+            next;
+        }
+        @prev_breakconds = grep {$_->isa('CZ::BREAKCOND')} $block->statements;
+    }
+}
+
+# Now the blocks are in order and objects have been linked to their
+# destinations, we can generate labels.
+#
+sub generate_labels {
+    my ($self, @blocks) = @_;
+    my $label_idx = 0;
+    for my $block (@blocks) {
+        $label_idx = $block->generate_labels($label_idx);
+    }
+}
+
+sub generate_codes {
+    my ($self, @blocks) = @_;
+    for my $block (@blocks) {
+        $block->generate_codes;
+    }
+}
+
 sub process_procedure {
     my ($self, $object) = @_;
     my @statements_flat = $object->statements_flat;
@@ -652,31 +959,35 @@ sub process_procedure {
     my @blocks;
     my @temp;
     for my $statement (@statements_flat) {
-        if ($statement->isa('ZComp::LOOPBLOCK') || $statement->isa('ZComp::POST') || $statement->isa('ZComp::BLOCKTERMINATOR')) {
-            my @block;
-            for my $item (@temp) {
-                push @block, $item;
-            }
+        if ($statement->isa('CZ::LOOPBLOCK') || $statement->isa('CZ::POST') || $statement->isa('CZ::BLOCKTERMINATOR')) {
+            push @blocks, CZA::Block->new(@temp);
             @temp = ();
-            push @blocks, \@block;
         }
-
-        print "" . ref($statement) . "\n";
         push @temp, $statement;
     }
-    my @block;
-    for my $item (@temp) {
-        push @block, $item;
-    }
-    @temp = ();
-    push @blocks, \@block;
+    push @blocks, CZA::Block->new(@temp);
+
+    # Move the POSTs to after the loop ends
+    @blocks = $self->swap_posts(@blocks);
+
+    # Connect breaks to the place they should jump to
+    $self->link_breaks(@blocks);
+
+    # Generate labels for things that need them
+    $self->generate_labels(@blocks);
+
+    # Generate the assembly code
+    $self->generate_codes(@blocks);
 
     for my $block (@blocks) {
-        print "[\n";
-        for my $statement (@{$block}) {
-            print "  " . ref($statement) . "\n";
+        print "; block start\n";
+        for my $code_chunk ($block->code_chunks) {
+            my @lines = $code_chunk->stringify;
+            my $indent = $code_chunk->isa('CZA::CodeChunk') ? "    " : "";
+            for my $line (@lines) {
+                print $indent . $line . "\n";
+            }
         }
-        print "],\n";
     }
 
     #    print ref($statement) . "\n";
@@ -695,12 +1006,12 @@ package main;
 sub builder {
     my (@item) = @_;
     my $type = shift @item;
-    my $class = sprintf('ZComp::%s', $type);
+    my $class = sprintf('CZ::%s', $type);
     return $class->new(@item);
 }
 
-my $zcomp = ZComp->new;
-$zcomp->stdin;
+my $cz = CZ->new;
+$cz->stdin;
 
 __DATA__
 REG16       : /[a-z]{2}/
