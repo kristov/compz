@@ -101,6 +101,13 @@ sub registers {
     return ($self->{_args}->registers);
 }
 
+# Carrying values over call boundaries:
+#
+# Calls need to be surrounded by pushes and pops for their parameters, but also
+# pushes and pops for variables that are live across the call boundry. When an
+# argument to a procedure is 8 bit, the high byte of the 16 bit pair can be
+# used to carry an 8 bit value across the call.
+
 package ZComp::COMPARITOR;
 
 sub new {
@@ -642,15 +649,45 @@ sub process_procedure {
     my @statements_flat = $object->statements_flat;
     my @register_map;
     my $idx = 0;
+    my @blocks;
+    my @temp;
     for my $statement (@statements_flat) {
-        my @registers = $statement->registers;
-        for my $register (@registers) {
-            my $name = $register->name;
-            push @{$register_map[$idx]}, $name;
+        if ($statement->isa('ZComp::LOOPBLOCK') || $statement->isa('ZComp::POST') || $statement->isa('ZComp::BLOCKTERMINATOR')) {
+            my @block;
+            for my $item (@temp) {
+                push @block, $item;
+            }
+            @temp = ();
+            push @blocks, \@block;
         }
-        $idx++;
+
+        print "" . ref($statement) . "\n";
+        push @temp, $statement;
     }
-    die Data::Dumper::Dumper(\@register_map);
+    my @block;
+    for my $item (@temp) {
+        push @block, $item;
+    }
+    @temp = ();
+    push @blocks, \@block;
+
+    for my $block (@blocks) {
+        print "[\n";
+        for my $statement (@{$block}) {
+            print "  " . ref($statement) . "\n";
+        }
+        print "],\n";
+    }
+
+    #    print ref($statement) . "\n";
+    #    next;
+    #    my @registers = $statement->registers;
+    #    for my $register (@registers) {
+    #        my $name = $register->name;
+    #        push @{$register_map[$idx]}, $name;
+    #    }
+    #    $idx++;
+    #}
 }
 
 package main;
