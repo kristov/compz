@@ -22,8 +22,8 @@ hl <= blkc_find[i nn l] {
             aa = aa + .file_entry_len
         }
         ab = i * 2
-        ac = ab + .base
-        ++ac
-        i = *ac
+        ab = ab + .base
+        ++ab
+        i = *ab
     }
 }
