@@ -297,8 +297,8 @@ sub label {
 }
 
 sub generate_label {
-    my ($self, $idx) = @_;
-    $self->{_label} = sprintf('l_%d', $idx);
+    my ($self, $proc_short_name, $idx) = @_;
+    $self->{_label} = sprintf('%s_l%d', $proc_short_name, $idx);
 }
 
 sub statements_flat {
@@ -445,8 +445,8 @@ sub code_chunk {
 }
 
 sub generate_label {
-    my ($self, $idx) = @_;
-    $self->{_label} = sprintf('pt_%d', $idx);
+    my ($self, $proc_short_name, $idx) = @_;
+    $self->{_label} = sprintf('%s_p%d', $proc_short_name, $idx);
 }
 
 package CZ::PROCEDURE;
@@ -758,10 +758,10 @@ sub code_chunks {
 }
 
 sub generate_labels {
-    my ($self, $label_idx) = @_;
+    my ($self, $proc_short_name, $label_idx) = @_;
     for my $statement ($self->statements) {
         if ($statement->can('generate_label')) {
-            $statement->generate_label($label_idx);
+            $statement->generate_label($proc_short_name, $label_idx);
             $label_idx++;
         }
     }
@@ -937,10 +937,10 @@ sub link_breaks {
 # destinations, we can generate labels.
 #
 sub generate_labels {
-    my ($self, @blocks) = @_;
+    my ($self, $proc_short_name, @blocks) = @_;
     my $label_idx = 0;
     for my $block (@blocks) {
-        $label_idx = $block->generate_labels($label_idx);
+        $label_idx = $block->generate_labels($proc_short_name, $label_idx);
     }
 }
 
@@ -951,9 +951,24 @@ sub generate_codes {
     }
 }
 
+sub generate_shorthand {
+    my ($long) = @_;
+    my @parts = split(/_/, $long);
+    my @shortp;
+    for my $part (@parts) {
+        my @chars = split(//, $part);
+        push @shortp, (scalar(@chars) > 1) ? $chars[0] . $chars[1] : $chars[0];
+    }
+    return join('', @shortp);
+}
+
 sub process_procedure {
     my ($self, $object) = @_;
     my @statements_flat = $object->statements_flat;
+    if (!$statements_flat[0]->isa('CZ::PROCEDURE')) {
+        die "PROCEDURE not found";
+    }
+    my $proc_short_name = generate_shorthand($statements_flat[0]->name);
     my @register_map;
     my $idx = 0;
     my @blocks;
@@ -974,7 +989,7 @@ sub process_procedure {
     $self->link_breaks(@blocks);
 
     # Generate labels for things that need them
-    $self->generate_labels(@blocks);
+    $self->generate_labels($proc_short_name, @blocks);
 
     # Generate the assembly code
     $self->generate_codes(@blocks);
