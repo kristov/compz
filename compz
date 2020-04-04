@@ -36,7 +36,8 @@ sub new {
 
 sub registers {
     my ($self) = @_;
-    return (map {$_->registers} @{$self->{_registers}});
+    return (); # not real registers yet
+    #return (map {$_->registers} @{$self->{_registers}});
 }
 
 package CZ::ASSIGNMENT;
@@ -782,6 +783,17 @@ sub add_posterminator {
     return $posterminator;
 }
 
+sub uniq_registers {
+    my ($self) = @_;
+    my %uniq_registers;
+    for my $statement ($self->statements) {
+        for my $register ($statement->registers) {
+            $uniq_registers{$register->name} = $register;
+        }
+    }
+    return sort {$a->name cmp $b->name} values %uniq_registers;
+}
+
 package CZA::Label;
 
 sub new {
@@ -964,17 +976,23 @@ sub generate_shorthand {
 
 sub process_procedure {
     my ($self, $object) = @_;
+
+    # Flatten out all statements into one list
     my @statements_flat = $object->statements_flat;
     if (!$statements_flat[0]->isa('CZ::PROCEDURE')) {
         die "PROCEDURE not found";
     }
     my $proc_short_name = generate_shorthand($statements_flat[0]->name);
-    my @register_map;
-    my $idx = 0;
+
+    # Group the statements into blocks.
     my @blocks;
     my @temp;
     for my $statement (@statements_flat) {
-        if ($statement->isa('CZ::LOOPBLOCK') || $statement->isa('CZ::POST') || $statement->isa('CZ::BLOCKTERMINATOR')) {
+        if (
+            $statement->isa('CZ::LOOPBLOCK') ||
+            $statement->isa('CZ::POST') ||
+            $statement->isa('CZ::BLOCKTERMINATOR')
+        ) {
             push @blocks, CZA::Block->new(@temp);
             @temp = ();
         }
@@ -995,7 +1013,10 @@ sub process_procedure {
     $self->generate_codes(@blocks);
 
     for my $block (@blocks) {
-        print "; block start\n";
+        my @registers = $block->uniq_registers;
+        print "; REGISTERS: " . join(", ", map {$_->name} @registers) . "\n";
+        my @statements = $block->statements;
+        print "; block start: " . ref($statements[0]) . "\n";
         for my $code_chunk ($block->code_chunks) {
             my @lines = $code_chunk->stringify;
             my $indent = $code_chunk->isa('CZA::CodeChunk') ? "    " : "";
