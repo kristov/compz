@@ -22,14 +22,14 @@ This is an example of three nested loops inside a procedure:
     .file_entry_len = 8
 
     hl <= blkc_find[i nn l] {
-        luz[i] {
+        while[i] {
             aa = blk_addr[i]
             a = .files_per_block
-            luzd[a] {
+            loop[a] {
                 bb = aa
                 cc = nn
                 b = l
-                luzd[b] {
+                loop[b] {
                     break (*cc != *bb)
                     ++cc
                     ++bb
@@ -87,27 +87,27 @@ They have an optional return type (by convention named `l` or `hl` depending on 
 
 There are only two loop types:
 
-1. `luz` (loop-until-zero)
-1. `luzd` (loop-until-zero-decrement)
+1. `while` (loop-until-zero)
+1. `loop` (loop-until-zero-decrement)
 
-    luz[b] {
+    while[b] {
         statements...
     }
 
-    luzd[b] {
+    loop[b] {
         statements...
     }
 
-They take a single variable as an argument. In both cases the loop will end when the variable has a zero value. In the case of `luzd` this variable is automatically decremented on each pass of the loop. There are only two ways to exit a loop:
+They take a single variable as an argument. In both cases the loop will end when the variable has a zero value. In the case of `loop` this variable is automatically decremented on each pass of the loop. There are only two ways to exit a loop:
 
-1. Make the variable zero (in the case of `luzd` by waiting for that to happen naturally, or explicitly by "shorting" the variable)
+1. Make the variable zero (in the case of `loop` by waiting for that to happen naturally, or explicitly by "shorting" the variable)
 1. With a `break TEST` statement
 
 #### Loop posts
 
 One of the possible statements inside a loop is the post `|`. If the loop "falls through" naturally by the variable going to zero the block of statements after the post is executed. If the TEST in a `break TEST` is encountered the loop is exited *without* executing the code after the post:
 
-    luzd[b] {
+    loop[b] {
         aa = 10
         break (aa == 10)
         |
@@ -138,7 +138,7 @@ Increment or decrement a variable:
 
 A post indicates a chunk of code that will execute when a loop condition exits due to the loop variable reaching zero:
 
-    luzd[b] {
+    loop[b] {
         aa = 10
         break (aa == 10)
         |
@@ -155,8 +155,8 @@ Break from a loop early if a condition is met:
 
 Loops X number of times until X becomes zero:
 
-    luz[b] {}
-    luzd[b] {}
+    while[b] {}
+    loop[b] {}
 
 #### Assignment
 
@@ -197,16 +197,16 @@ For the example procedure above the blocks would look like this:
 
     hl <= blkc_find[i nn l] {
     0------------------------------------------
-        luz[i] {
+        while[i] {
             aa = blk_addr[i]
             a = .files_per_block
     1------------------------------------------
-            luzd[a] {
+            loop[a] {
                 bb = aa
                 cc = nn
                 b = l
     2------------------------------------------
-                luzd[b] {
+                loop[b] {
                     break (*cc != *bb)
                     ++cc
                     ++bb
@@ -225,4 +225,4 @@ For the example procedure above the blocks would look like this:
         }
     }
 
-Each block boundry would generate a label. For example the `break (*cc != *bb)` would generate a jump to label `4` if the test is true. The `luzd[b] {` label `2` would be the destination for a `djnz`.
+Each block boundry would generate a label. For example the `break (*cc != *bb)` would generate a jump to label `4` if the test is true. The `loop[b] {` label `2` would be the destination for a `djnz`.

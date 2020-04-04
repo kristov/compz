@@ -5,14 +5,14 @@ namespace m8fs
 .file_entry_len = 8
 
 hl <= blkc_find[i nn l] {
-    luz[i] {
+    while[i] {
         aa = blk_addr[i]
         a = .files_per_block
-        luzd[a] {
+        loop[a] {
             bb = aa
             cc = nn
             b = l
-            luzd[b] {
+            loop[b] {
                 break (*cc != *bb)
                 ++cc
                 ++bb

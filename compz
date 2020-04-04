@@ -80,14 +80,14 @@ sub code_chunk {
     my ($self) = @_;
     if ($self->start->isa('CZ::LOOPBLOCK')) {
         my $type = $self->start->type;
-        if ($type eq 'luz') {
+        if ($type eq 'while') {
             return CZA::CodeChunk->new(
                 ['xor', 'a'],
                 ['cp x'],
                 ['jp nz', $self->start->label],
             );
         }
-        if ($type eq 'luzd') {
+        if ($type eq 'loop') {
             return CZA::CodeChunk->new(
                 ['djnz', $self->start->label],
             );
@@ -1039,7 +1039,7 @@ HEX16       : /0x[0-9a-f]{4}/
 HEX8        : /0x[0-9a-f]{2}/
 DECIMAL     : /[0-9]+/
 POST        : '|'
-LOOP        : 'luzd' | 'luz'
+LOOP        : 'loop' | 'while'
 
 REGISTER : REG16 | REG8
 
