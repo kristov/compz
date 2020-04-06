@@ -3,6 +3,12 @@
 use strict;
 use warnings;
 
+#############################################################################
+#                                                                           #
+# CZ: Language token classes                                                #
+#                                                                           #
+#############################################################################
+
 package CZ::startrule;
 
 sub new {
@@ -34,6 +40,8 @@ sub new {
     return $self;
 }
 
+sub block_start { 0; }
+
 sub registers {
     my ($self) = @_;
     return (); # not real registers yet
@@ -50,6 +58,14 @@ sub new {
     }, $class);
 }
 
+sub block_start {
+    my ($self) = @_;
+    if ($self->{_right}->isa('CZ::CALL')) {
+        return 1;
+    }
+    return 0;
+}
+
 sub registers {
     my ($self) = @_;
     return ($self->{_left}->registers, $self->{_right}->registers);
@@ -57,6 +73,9 @@ sub registers {
 
 sub code_chunk {
     my ($self) = @_;
+    if ($self->{_right}->isa('CZ::CALL')) {
+        return $self->{_right}->code_chunk();
+    }
     # if left is indirect load address into hl and value into somewhere else etc
     return CZA::CodeChunk->new();
 }
@@ -67,6 +86,8 @@ sub new {
     my ($class, $start) = @_;
     return bless({_start => $start}, $class);
 }
+
+sub block_start { 1; }
 
 sub registers {
     return ();
@@ -106,6 +127,8 @@ sub new {
         _breaks_to => undef,
     }, $class);
 }
+
+sub block_start { 0; }
 
 sub registers {
     my ($self) = @_;
@@ -156,6 +179,14 @@ sub registers {
 # pushes and pops for variables that are live across the call boundry. When an
 # argument to a procedure is 8 bit, the high byte of the 16 bit pair can be
 # used to carry an 8 bit value across the call.
+
+sub code_chunk {
+    my ($self) = @_;
+    #my $chunks = [];
+    #for my $arg (@{$self->{_args}}) {
+    #}
+    return CZA::CodeChunk->new(['call ' . $self->{_name}]);
+}
 
 package CZ::COMPARITOR;
 
@@ -218,8 +249,13 @@ sub value {
 package CZ::HEX8;
 
 sub new {
-    my ($class, @d) = @_;
-    die "CZ::HEX8: " . Data::Dumper::Dumper(\@d);
+    my ($class, $hex) = @_;
+    return bless({_value => hex($hex)}, $class);
+}
+
+sub value {
+    my ($self) = @_;
+    return $self->{_value};
 }
 
 package CZ::INDIRECT;
@@ -282,6 +318,8 @@ sub new {
     return $self;
 }
 
+sub block_start { 1; }
+
 sub type {
     my ($self) = @_;
     return $self->{_type};
@@ -337,6 +375,8 @@ sub new {
         _value => $d[1]->[0],
     }, $class);
 }
+
+sub block_start { 0; }
 
 sub registers {
     my ($self) = @_;
@@ -414,6 +454,8 @@ sub new {
     my ($class, @d) = @_;
     return bless({}, $class);
 }
+
+sub block_start { 1; }
 
 sub registers {
     return ();
@@ -520,6 +562,8 @@ sub new {
         return $self;
     }
 }
+
+sub block_start { 0; }
 
 sub return {
     my ($self) = @_;
@@ -632,6 +676,8 @@ sub new {
     return bless({_value => $d[1]->[0]}, $class);
 }
 
+sub block_start { 0; }
+
 sub value {
     my ($self) = @_;
     return $self->{_value};
@@ -657,7 +703,19 @@ sub code_chunk {
             ['ret'],
         );
     }
-    die "invalid return";
+    if ($self->value->isa('CZ::NUMBER')) {
+        return CZA::CodeChunk->new(
+            ['ld hl', $self->value->value],
+            ['ret'],
+        );
+    }
+    if ($self->value->isa('CZ::INDIRECT')) {
+        return CZA::CodeChunk->new(
+            ['ld hl', "(" . $self->value->source->name . ")"],
+            ['ret'],
+        );
+    }
+    die "invalid return: " . Data::Dumper::Dumper($self->value);
 }
 
 package CZ::STATEMENT;
@@ -729,6 +787,93 @@ sub new {
     return $d[0];
 }
 
+#############################################################################
+#                                                                           #
+# CZA: Classes for compilation                                              #
+#                                                                           #
+#############################################################################
+
+package CZA::Register8;
+
+sub new {
+    my ($class, $name) = @_;
+    return bless({
+        _name => $name,
+        _in_use => 0,
+    }, $class);
+}
+
+sub can_use {
+    my ($self) = @_;
+    if ($self->{_name} eq 'f') {
+        return 0;
+    }
+    if ($self->{_in_use}) {
+        return 0;
+    }
+    return 1;
+}
+
+sub use {
+    my ($self, $use) = @_;
+    $self->{_in_use} = $use;
+}
+
+package CZA::Register16;
+
+sub new {
+    my ($class, $H, $L) = @_;
+    return bless({
+        _H => CZA::Register8->new($H),
+        _L => CZA::Register8->new($L),
+    }, $class);
+}
+
+sub can_use {
+    my ($self) = @_;
+    if ($self->{_L}->can_use() && $self->{_L}->can_use()) {
+        return 1;
+    }
+    return 0;
+}
+
+sub use8 {
+    my ($self) = @_;
+    if ($self->{_L}->can_use()) {
+        $self->{_L}->use(1);
+        return $self->{_L};
+    }
+    if ($self->{_H}->can_use()) {
+        $self->{_H}->use(1);
+        return $self->{_H};
+    }
+    return;
+}
+
+sub use16 {
+    my ($self) = @_;
+    if ($self->can_use()) {
+        $self->{_L}->use(1);
+        $self->{_H}->use(1);
+        return 1;
+    }
+    return;
+}
+
+package CZA::RegisterSet;
+
+sub new {
+    my ($class) = @_;
+    return bless({
+        _af => CZA::Register16->new('a', 'f'),
+        _bc => CZA::Register16->new('b', 'c'),
+        _de => CZA::Register16->new('d', 'e'),
+        _hl => CZA::Register16->new('h', 'h'),
+        _ix => CZA::Register16->new('i', 'x'),
+        _iy => CZA::Register16->new('i', 'y'),
+    }, $class);
+}
+
 package CZA::Block;
 
 sub new {
@@ -736,6 +881,7 @@ sub new {
     my $self = bless({
         _statements => [],
         _code_chunks => [],
+        _register_set => CZA::RegisterSet->new(),
     }, $class);
     for my $statement (@statements) {
         push @{$self->{_statements}}, $statement;
@@ -988,11 +1134,7 @@ sub process_procedure {
     my @blocks;
     my @temp;
     for my $statement (@statements_flat) {
-        if (
-            $statement->isa('CZ::LOOPBLOCK') ||
-            $statement->isa('CZ::POST') ||
-            $statement->isa('CZ::BLOCKTERMINATOR')
-        ) {
+        if ($statement->block_start) {
             push @blocks, CZA::Block->new(@temp);
             @temp = ();
         }
@@ -1014,9 +1156,14 @@ sub process_procedure {
 
     for my $block (@blocks) {
         my @registers = $block->uniq_registers;
-        print "; REGISTERS: " . join(", ", map {$_->name} @registers) . "\n";
         my @statements = $block->statements;
-        print "; block start: " . ref($statements[0]) . "\n";
+        print "; --------------------- BLOCK HEAD --------------------------\n";
+        print "; REGISTERS: " . join(", ", map {$_->name} @registers) . "\n";
+        print "; STATEMENTS:\n";
+        for my $statement (@statements) {
+            print ";     " . ref($statement) . "\n";
+        }
+        print "; --------------------- /BLOCK HEAD -------------------------\n";
         for my $code_chunk ($block->code_chunks) {
             my @lines = $code_chunk->stringify;
             my $indent = $code_chunk->isa('CZA::CodeChunk') ? "    " : "";
@@ -1053,7 +1200,7 @@ __DATA__
 REG16       : /[a-z]{2}/
 REG8        : /[a-z]/
 WORD        : /[a-z0-9_]{3,}/
-LABEL       : /.[a-z0-9_]+/
+LABEL       : /\.[a-z0-9_]+/
 COMPARITOR  : '==' | '!='
 OP          : '+' | '-' | '/' | '*'
 HEX16       : /0x[0-9a-f]{4}/
@@ -1112,6 +1259,7 @@ STATEMENT : RETURN
           | BREAKCOND
           | LOOPBLOCK
           | ASSIGNMENT
+          | CALL
 
 PROCEDURE : REGISTER '<=' WORD ARGS '{' STATEMENT(s) '}'
           | REGISTER '<=' WORD '{' STATEMENT(s) '}'

@@ -26,4 +26,5 @@ hl <= blkc_find[i nn l] {
         ++ab
         i = *ab
     }
+    <= 0x00
 }
