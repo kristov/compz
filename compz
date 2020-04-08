@@ -80,7 +80,7 @@ sub code_chunk {
     return CZA::CodeChunk->new();
 }
 
-package CZ::BLOCKTERMINATOR;
+package CZ::LOOPTERMINATOR;
 
 sub new {
     my ($class, $start) = @_;
@@ -90,7 +90,8 @@ sub new {
 sub block_start { 1; }
 
 sub registers {
-    return ();
+    my ($self) = @_;
+    return $self->{_start}->registers;
 }
 
 sub start {
@@ -352,7 +353,7 @@ sub statements_flat {
         }
         push @flat, $statement;
     }
-    push @flat, CZ::BLOCKTERMINATOR->new($self);
+    push @flat, CZ::LOOPTERMINATOR->new($self);
     return @flat;
 }
 
@@ -732,22 +733,132 @@ sub new {
     die "CZ::TERNARY " . Data::Dumper::Dumper(\@d);
 }
 
-package CZ::TEST;
+package CZ::TEST::TI16I16;
 
 sub new {
-    my ($class, @d) = @_;
-	shift @d;
-    pop @d;
+    my ($class, $left, $comp, $right) = @_;
     return bless({
-        _left => $d[0]->[0],
-        _comparitor => $d[1]->[0],
-        _right => $d[2]->[0],
+        _left => $left,
+        _comparitor => $comp,
+        _right => $right,
     }, $class);
 }
 
 sub registers {
     my ($self) = @_;
     return ($self->{_left}->registers, $self->{_right}->registers);
+}
+
+# ld a,(xx)
+# cp (hl)
+# jp nz,label
+#
+# ld a,(xx)
+# cp (hl)
+# jp z,label
+
+package CZ::TEST::TI168;
+
+sub new {
+    my ($class, $left, $comp, $right) = @_;
+    return bless({
+        _left => $left,
+        _comparitor => $comp,
+        _right => $right,
+    }, $class);
+}
+
+sub registers {
+    my ($self) = @_;
+    return ($self->{_left}->registers, $self->{_right}->registers);
+}
+
+# ld a,x
+# cp (hl)
+# jp nz,label
+#
+# ld a,x
+# cp (hl)
+# jp z,label
+
+package CZ::TEST::T88;
+
+sub new {
+    my ($class, $left, $comp, $right) = @_;
+    return bless({
+        _left => $left,
+        _comparitor => $comp,
+        _right => $right,
+    }, $class);
+}
+
+sub registers {
+    my ($self) = @_;
+    return ($self->{_left}->registers, $self->{_right}->registers);
+}
+
+# ld a,x
+# cp y
+# jp nz,label
+#
+# ld a,x
+# cp y
+# jp z,label
+
+package CZ::TEST::T1616;
+
+sub new {
+    my ($class, $left, $comp, $right) = @_;
+    return bless({
+        _left => $left,
+        _comparitor => $comp,
+        _right => $right,
+    }, $class);
+}
+
+sub registers {
+    my ($self) = @_;
+    return ($self->{_left}->registers, $self->{_right}->registers);
+}
+
+# and a
+# sbc hl,xx
+# add hl,xx
+# jp nz,label
+#
+# and a
+# sbc hl,xx
+# add hl,xx
+# jp z,label
+
+package CZ::TEST;
+
+sub new {
+    my ($class, @d) = @_;
+	shift @d;
+    pop @d;
+    my $left = $d[0]->[0];
+    my $comp = $d[1]->[0];
+    my $right = $d[2]->[0];
+    if ($left->isa('CZ::REG8') && $right->isa('CZ::INDIRECT')) {
+        $left = $d[2]->[0];
+        $right = $d[0]->[0];
+    }
+    if ($left->isa('CZ::INDIRECT')) {
+        if ($right->isa('CZ::INDIRECT')) {
+            return CZ::TEST::TI16I16->new($left, $comp, $right);
+        }
+        if ($right->isa('CZ::REG8')) {
+            return CZ::TEST::TI168->new($left, $comp, $right);
+        }
+    }
+    if ($left->isa('CZ::REG8') && $right->isa('CZ::REG8')) {
+        return CZ::TEST::T88->new($left, $comp, $right);
+    }
+    if ($left->isa('CZ::REG16') && $right->isa('CZ::REG16')) {
+        return CZ::TEST::T1616->new($left, $comp, $right);
+    }
+    die sprintf("invalid registers: %s, %s", ref($left), ref($right));
 }
 
 package CZ::VALOPVAL;
@@ -1109,6 +1220,63 @@ sub generate_codes {
     }
 }
 
+sub generate_virtualreg {
+    my ($self, @blocks) = @_;
+    my %registers;
+    my $idx = 0;
+    for my $block (@blocks) {
+        for my $statement ($block->statements) {
+            for my $register ($statement->registers) {
+                my $name = $register->name;
+                if (!exists $registers{$name}) {
+                    $registers{$name} = {
+                        first => $idx,
+                        last => 0,
+                    };
+                }
+                if ($idx >= $registers{$name}->{first}) {
+                    $registers{$name}->{last} = $idx;
+                }
+            }
+            $idx++;
+        }
+    }
+    my @all_registers = sort {$a cmp $b} keys %registers;
+    my @regmap;
+    for (my $i = 0; $i < $idx; $i++) {
+        for my $name (@all_registers) {
+            my $reg = $registers{$name};
+            if (($reg->{first} <= $i) && ($reg->{last} >= $i)) {
+                $regmap[$i]->{$name} = 1;
+            }
+            else {
+                $regmap[$i]->{$name} = 0;
+            }
+        }
+    }
+
+    my $nr_reg = scalar(@all_registers);
+    my $hr = '-' x (($nr_reg * 4) + 1);
+    print "VIRTUAL REGISTER MAP:\n$hr\n";
+    for my $name (@all_registers) {
+        printf("|%3s", $name);
+    }
+    print "|\n";
+    print "$hr\n";
+    for my $row (@regmap) {
+        for my $name (@all_registers) {
+            if ($row->{$name}) {
+                print("|  X");
+            }
+            else {
+                print("|   ");
+            }
+        }
+        print "|\n";
+    }
+    print "$hr\n";
+}
+
 sub generate_shorthand {
     my ($long) = @_;
     my @parts = split(/_/, $long);
@@ -1150,6 +1318,9 @@ sub process_procedure {
 
     # Generate labels for things that need them
     $self->generate_labels($proc_short_name, @blocks);
+
+    # Generate the virtual register map
+    $self->generate_virtualreg(@blocks);
 
     # Generate the assembly code
     $self->generate_codes(@blocks);
